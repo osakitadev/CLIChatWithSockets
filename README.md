@@ -12,5 +12,5 @@ First of all, you need to have `Go 1.23.4` (the one I have) installed in your co
 - [x] Messages Rate Limit (to prevent spamming messages)
 - [x] More commands in-chat
 - [] Client's code rework
-- [] Fix some code to improve it
+- [x] Fix some code to improve it
 - [] Make a better rate limiter
