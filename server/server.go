@@ -9,7 +9,7 @@ import (
 )
 
 type Server struct {
-	connectedClients []net.Conn
+	connectedClients map[string]net.Conn
 	listener         net.Listener
 	port             string
 	protocol         string
@@ -24,19 +24,20 @@ be replicated to all the connected clients. If it returns false
 means that it was a command and the message should not be replicated.
 */
 func (s Server) handleCommand(message []byte, client net.Conn) bool {
+	// TODO: Make this a map with the commands as keys and the functions as values
+	// because this sucks ✨
+
 	switch string(message) {
 	case "/exit": // Disconnects the client
-		log.Printf("[%v] has left the chat\n", client.RemoteAddr())
+		s.replicateMessage([]byte(fmt.Sprintf("%v has left the chat\n", client.RemoteAddr())), client)
+		delete(s.connectedClients, client.RemoteAddr().String())
 		client.Close()
 		return false
 	case "/help": // Shows a list of commands
-		fmt.Fprintf(client, "Available commands:\n/exit - Disconnects the client\n/help - Shows a list of commands\n/whoami - Shows the user address\n/online - Shows the amount of clients connected")
-		return false
-	case "/whoami": // Shows the user address
-		fmt.Fprintf(client, "You are %v", client.RemoteAddr())
+		fmt.Fprintf(client, "\n\nAvailable commands:\n/exit - Disconnects the client\n/help - Shows a list of commands\n/online - Shows the amount of clients connected")
 		return false
 	case "/online": // Shows the amount of clients connected
-		fmt.Fprintf(client, "There are %v clients connected", len(s.connectedClients))
+		fmt.Fprintf(client, "[COMMANDS]: There are %v clients connected", len(s.connectedClients))
 		return false
 	}
 
@@ -44,13 +45,13 @@ func (s Server) handleCommand(message []byte, client net.Conn) bool {
 }
 
 // Replicates the message to all the connected clients but not to the sender
-func (s *Server) replicateMessage(message []byte, sender net.Conn) {
-	for _, client := range s.connectedClients {
+func (s Server) replicateMessage(message []byte, sender net.Conn) {
+	for clientId, client := range s.connectedClients {
 		if client == sender {
 			continue
 		}
 
-		fmt.Fprintf(client, "[Client %v]: %v", client.RemoteAddr(), string(message))
+		fmt.Fprintf(client, "[Client %v]: %v", clientId, string(message))
 	}
 }
 
@@ -58,7 +59,7 @@ func (s *Server) replicateMessage(message []byte, sender net.Conn) {
 Handles the client connection, reads the messages and replicates them to
 all the connected clients. It also helps handling the commands.
 */
-func (s *Server) handleClient(client net.Conn) {
+func (s Server) handleClient(client net.Conn) {
 	// Send welcome message to the client
 	client.Write([]byte("Welcome to the chat, say hello to everyone!"))
 
@@ -73,6 +74,10 @@ func (s *Server) handleClient(client net.Conn) {
 			return
 		}
 
+		if s.rateLimiter.IsRateLimited(client) {
+			continue
+		}
+
 		message := buffer[:n] // Cut off the trailing bytes for correct checking
 
 		if !s.handleCommand(message, client) {
@@ -80,6 +85,7 @@ func (s *Server) handleClient(client net.Conn) {
 		}
 
 		s.replicateMessage(message, client)
+		s.rateLimiter.IncrementMessageCount(client)
 	}
 }
 
@@ -94,7 +100,8 @@ func (s *Server) handleAcceptIncomingClients() {
 
 		log.Printf("[%v] has joined the chat\n", client.RemoteAddr())
 
-		s.connectedClients = append(s.connectedClients, client)
+		s.connectedClients[client.RemoteAddr().String()] = client
+		s.rateLimiter.AddToQueue(client)
 		go s.handleClient(client)
 	}
 }
@@ -115,7 +122,7 @@ func (s *Server) Start() {
 	go s.handleAcceptIncomingClients()
 }
 
-func (s *Server) Stop() {
+func (s Server) Stop() {
 	log.Println("Stopping the server")
 
 	for _, client := range s.connectedClients {
@@ -129,7 +136,7 @@ func NewServer() *Server {
 	return &Server{
 		port:             config.ServerPort,
 		protocol:         config.Protocol,
-		connectedClients: []net.Conn{},
+		connectedClients: map[string]net.Conn{},
 		rateLimiter:      NewRateLimiter(),
 	}
 }
