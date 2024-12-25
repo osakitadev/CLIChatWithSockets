@@ -41,14 +41,6 @@ func handleSendingMessages(client net.Conn) {
 	}
 }
 
-// Outputs the welcome message that the client receives from the server
-func outputServerWelcomeMessage(client net.Conn) {
-	buffer := make([]byte, 1024)
-	client.Read(buffer)
-	fmt.Println(string(buffer))
-	fmt.Println(`Type /help to see the available commands.`)
-}
-
 func main() {
 	chatLeaveChannel := make(chan os.Signal, 1)
 
@@ -60,7 +52,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	outputServerWelcomeMessage(client)
+	fmt.Println(`Type /help to see the available commands.`)
 	go handleIncomingMessages(client)
 	go handleSendingMessages(client)
 
