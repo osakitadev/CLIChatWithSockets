@@ -6,11 +6,8 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/signal"
 	"strings"
-)
-
-var (
-	chatLeaveChannel = make(chan bool)
 )
 
 // Requests the user for a message input
@@ -36,32 +33,10 @@ func handleIncomingMessages(client net.Conn) {
 	}
 }
 
-func checkForCommands(message []byte, client net.Conn) bool {
-	switch string(message) {
-	case "/exit":
-		client.Write([]byte("/exit"))
-		chatLeaveChannel <- true
-
-		return true
-	case "/whois":
-		fmt.Println("[COMMANDS]: You are: ", client.LocalAddr())
-
-		return true
-	}
-
-	return false
-}
-
 // Handles sending messages to the server
 func handleSendingMessages(client net.Conn) {
 	for {
 		message := requestMessageInput()
-
-		// Prevent sending a message to others if it's a command
-		if checkForCommands(message, client) {
-			continue
-		}
-
 		client.Write(message)
 	}
 }
@@ -71,10 +46,14 @@ func outputServerWelcomeMessage(client net.Conn) {
 	buffer := make([]byte, 1024)
 	client.Read(buffer)
 	fmt.Println(string(buffer))
-	fmt.Println(`List of commands: /exit, /whois`)
+	fmt.Println(`Type /help to see the available commands.`)
 }
 
 func main() {
+	chatLeaveChannel := make(chan os.Signal, 1)
+
+	signal.Notify(chatLeaveChannel, os.Interrupt)
+
 	client, err := net.Dial("tcp", ":8080")
 
 	if err != nil {
