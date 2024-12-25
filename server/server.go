@@ -23,21 +23,13 @@ When the function returns true, means that the message should
 be replicated to all the connected clients. If it returns false
 means that it was a command and the message should not be replicated.
 */
-func (s Server) handleCommand(message []byte, client net.Conn) bool {
-	// TODO: Make this a map with the commands as keys and the functions as values
-	// because this sucks ✨
+func (s *Server) handleCommand(message []byte, client net.Conn) bool {
+	for commandName, commandFn := range Commands {
+		if string(message) != commandName {
+			continue
+		}
 
-	switch string(message) {
-	case "/exit": // Disconnects the client
-		s.replicateMessage([]byte(fmt.Sprintf("%v has left the chat\n", client.RemoteAddr())), client)
-		delete(s.connectedClients, client.RemoteAddr().String())
-		client.Close()
-		return false
-	case "/help": // Shows a list of commands
-		fmt.Fprintf(client, "\n\nAvailable commands:\n/exit - Disconnects the client\n/help - Shows a list of commands\n/online - Shows the amount of clients connected")
-		return false
-	case "/online": // Shows the amount of clients connected
-		fmt.Fprintf(client, "[COMMANDS]: There are %v clients connected", len(s.connectedClients))
+		commandFn(message, client, s)
 		return false
 	}
 
@@ -60,9 +52,6 @@ Handles the client connection, reads the messages and replicates them to
 all the connected clients. It also helps handling the commands.
 */
 func (s Server) handleClient(client net.Conn) {
-	// Send welcome message to the client
-	client.Write([]byte("Welcome to the chat, say hello to everyone!"))
-
 	for {
 		buffer := make([]byte, 1024)
 		n, err := client.Read(buffer)
